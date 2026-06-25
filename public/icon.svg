@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e293b" />
+      <stop offset="100%" stop-color="#0f172a" />
+    </linearGradient>
+    <linearGradient id="train-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#3b82f6" />
+      <stop offset="100%" stop-color="#1d4ed8" />
+    </linearGradient>
+    <linearGradient id="glow-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.8" />
+      <stop offset="100%" stop-color="#60a5fa" stop-opacity="0.2" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="512" height="512" rx="128" fill="url(#bg-grad)" />
+  
+  <!-- Outer Ring glow -->
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="none" stroke="#2563eb" stroke-width="6" stroke-opacity="0.3" />
+  
+  <g transform="translate(64, 48)">
+    <!-- Rail Tracks -->
+    <path d="M70 340 L150 180 M314 340 L234 180" stroke="#475569" stroke-width="12" stroke-linecap="round" />
+    <path d="M100 300 L284 300 M120 260 L264 260 M140 220 L244 220" stroke="#475569" stroke-width="8" stroke-linecap="round" />
+    
+    <!-- Speed Lines / Glow -->
+    <path d="M0 380 L384 380" stroke="url(#glow-grad)" stroke-width="4" />
+    
+    <!-- Train front body -->
+    <path d="M112 180 C112 120, 142 60, 192 60 C242 60, 272 120, 272 180 L256 310 C256 320, 240 330, 192 330 C144 330, 128 320, 128 310 Z" fill="url(#train-grad)" />
+    
+    <!-- Train white / silver metal panel -->
+    <path d="M132 180 C132 140, 152 90, 192 90 C232 90, 252 140, 252 180 L242 270 C242 275, 230 280, 192 280 C154 280, 142 275, 142 270 Z" fill="#ffffff" />
+    
+    <!-- Windshield (dark glass) -->
+    <path d="M152 140 C152 120, 162 105, 192 105 C222 105, 232 120, 232 140 L228 175 C228 180, 220 185, 192 185 C164 185, 156 180, 156 175 Z" fill="#0f172a" />
+    <!-- Windshield gleam -->
+    <path d="M164 125 C164 120, 172 115, 185 115 C185 125, 180 145, 172 155 Z" fill="#ffffff" fill-opacity="0.4" />
+    
+    <!-- Headlights -->
+    <ellipse cx="164" cy="245" rx="14" ry="8" fill="#fef08a" />
+    <ellipse cx="220" cy="245" rx="14" ry="8" fill="#fef08a" />
+    
+    <!-- Headlight beam glow -->
+    <path d="M164 245 L130 330 L160 330 Z" fill="#fef08a" fill-opacity="0.3" />
+    <path d="M220 245 L254 330 L224 330 Z" fill="#fef08a" fill-opacity="0.3" />
+    
+    <!-- Center Logo Shield -->
+    <path d="M184 210 L200 210 L196 230 L188 230 Z" fill="#3b82f6" />
+    
+    <!-- Spark / Star (AI symbol) -->
+    <path d="M192 15 Q192 27 204 27 Q192 27 192 39 Q192 27 180 27 Q192 27 192 15 Z" fill="#60a5fa" />
+  </g>
+</svg>

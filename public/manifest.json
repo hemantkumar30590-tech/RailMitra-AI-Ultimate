@@ -1,0 +1,55 @@
+{
+  "name": "RailMitra AI",
+  "short_name": "RailMitra",
+  "description": "A live train status lookup application for Indian Railways.",
+  "categories": ["travel", "utilities"],
+  "lang": "en",
+  "id": "/",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#1e293b",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/maskable_icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Search Live Status",
+      "short_name": "Live Status",
+      "description": "Find live delays and status of any train on its route",
+      "url": "/?tab=live",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Trains Between Stations",
+      "short_name": "Trains Between",
+      "description": "Check current trains running between stations",
+      "url": "/?tab=between",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}

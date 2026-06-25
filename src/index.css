@@ -1,0 +1,107 @@
+@import "tailwindcss";
+
+@theme {
+  --animate-scroll-up: scroll-up 20s linear infinite;
+  --animate-flicker: flicker 2s linear infinite;
+  --animate-slide-in: slide-in 0.4s ease-out forwards;
+  
+  @keyframes scroll-up {
+    0% { transform: translateY(0); }
+    100% { transform: translateY(-50%); }
+  }
+
+  @keyframes slide-in {
+    0% { opacity: 0; transform: translateY(-10px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes flicker {
+    0%, 19.999%, 22%, 62.999%, 64%, 64.999%, 70%, 100% { opacity: 0.99; }
+    20%, 21.999%, 63%, 63.999%, 65%, 69.999% { opacity: 0.4; }
+  }
+}
+
+.pause-on-hover:hover {
+  animation-play-state: paused !important;
+}
+
+/* Custom scrollbar for webkit */
+.custom-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.custom-scroll::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05); 
+  border-radius: 4px;
+}
+.custom-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2); 
+  border-radius: 4px;
+}
+.custom-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3); 
+}
+
+/* Special Neon 3D Realistic Utilities */
+.shadow-3d {
+  box-shadow: 
+    10px 10px 20px rgba(0, 0, 0, 0.6), 
+    -10px -10px 20px rgba(45, 212, 191, 0.15),
+    inset 1px 1px 2px rgba(45, 212, 191, 0.3),
+    inset -1px -1px 2px rgba(0,0,0,0.5);
+  border: 1px solid rgba(45, 212, 191, 0.2);
+}
+
+.shadow-3d-inset {
+  box-shadow: 
+    inset 6px 6px 12px rgba(0, 0, 0, 0.8), 
+    inset -6px -6px 12px rgba(45, 212, 191, 0.1);
+  border: 1px solid rgba(45, 212, 191, 0.1);
+}
+
+.shadow-3d-button {
+  box-shadow: 
+    0 0 10px rgba(59, 130, 246, 0.5), 
+    0 0 20px rgba(59, 130, 246, 0.3),
+    inset 1px 1px 2px rgba(255, 255, 255, 0.4),
+    inset -1px -1px 2px rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(59, 130, 246, 0.6);
+  transition: all 0.2s ease;
+}
+
+.shadow-3d-button:active {
+  box-shadow: 
+    inset 4px 4px 8px rgba(0, 0, 0, 0.6), 
+    inset -4px -4px 8px rgba(59, 130, 246, 0.3);
+  transform: translateY(2px);
+}
+
+.shadow-3d-card {
+  background: linear-gradient(145deg, #0a0f1a, #060913);
+  box-shadow: 
+    15px 15px 30px #020308, 
+    -15px -15px 30px #121a2c,
+    inset 2px 2px 5px rgba(45, 212, 191, 0.15);
+  border: 1px solid rgba(45, 212, 191, 0.2);
+}
+
+.shadow-3d-card-dark {
+  background: linear-gradient(145deg, #1f2937, #111827);
+  box-shadow: 
+    10px 10px 20px #0b0f19, 
+    -10px -10px 20px #29374b,
+    inset 1px 1px 2px rgba(59, 130, 246, 0.3);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+}
+
+.shadow-3d-dark {
+  box-shadow: 
+    10px 10px 20px #020308, 
+    -10px -10px 20px #121a2c,
+    inset 1px 1px 2px rgba(45, 212, 191, 0.15);
+}
+
+body {
+  background-color: #060913; /* Deep dark slate for neon pop */
+  color: #e2e8f0;
+}
