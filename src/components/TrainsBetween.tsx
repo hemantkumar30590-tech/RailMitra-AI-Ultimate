@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Search, MapPin, ArrowRight, Train, AlertCircle, Clock } from 'lucide-react';
 
-export default function TrainsBetween({ onTrainClick }: { onTrainClick?: (no: string) => void }) {
+export default function TrainsBetween({ onTrainClick, initialSource, initialDest }: { onTrainClick?: (no: string) => void, initialSource?: string, initialDest?: string }) {
   const [fromCode, setFromCode] = useState('');
   const [toCode, setToCode] = useState('');
   const [date, setDate] = useState(() => {
@@ -9,8 +9,8 @@ export default function TrainsBetween({ onTrainClick }: { onTrainClick?: (no: st
     return d.toISOString().split('T')[0];
   });
   
-  const [fromQuery, setFromQuery] = useState('');
-  const [toQuery, setToQuery] = useState('');
+  const [fromQuery, setFromQuery] = useState(initialSource || '');
+  const [toQuery, setToQuery] = useState(initialDest || '');
   
   const [fromSuggestions, setFromSuggestions] = useState<any[]>([]);
   const [toSuggestions, setToSuggestions] = useState<any[]>([]);
@@ -19,6 +19,49 @@ export default function TrainsBetween({ onTrainClick }: { onTrainClick?: (no: st
   
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<any[] | null>(null);
+
+  useEffect(() => {
+    const handleInitial = async () => {
+       let fCode = '';
+       let tCode = '';
+       if (initialSource) {
+          try {
+             const res = await fetch(`/api/search-stations?q=${initialSource}`);
+             const data = await res.json();
+             if (data.results && data.results.length > 0) {
+                 fCode = data.results[0].code;
+                 setFromCode(fCode);
+                 setFromQuery(`${data.results[0].name} (${fCode})`);
+             }
+          } catch(e) {}
+       }
+       if (initialDest) {
+          try {
+             const res = await fetch(`/api/search-stations?q=${initialDest}`);
+             const data = await res.json();
+             if (data.results && data.results.length > 0) {
+                 tCode = data.results[0].code;
+                 setToCode(tCode);
+                 setToQuery(`${data.results[0].name} (${tCode})`);
+             }
+          } catch(e) {}
+       }
+       if (fCode && tCode) {
+           setLoading(true);
+           setResults(null);
+           try {
+               const r = await fetch(`/api/trains-between?from=${fCode}&to=${tCode}`);
+               const data = await r.json();
+               setResults(data.results || []);
+           } catch (e) {
+               setResults([]);
+           } finally {
+               setLoading(false);
+           }
+       }
+    };
+    handleInitial();
+  }, [initialSource, initialDest]);
 
   useEffect(() => {
     const timer = setTimeout(() => {

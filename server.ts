@@ -88,9 +88,8 @@ async function startServer() {
 
   const localNlpEngine = (query: string) => {
     const text = query.toLowerCase();
-    const trainMatch = text.match(/\b\d{5}\b/);
+    
     const pnrMatch = text.match(/\b\d{10}\b/);
-
     if (pnrMatch) {
       return {
         intent: 'PNR_STATUS',
@@ -99,23 +98,62 @@ async function startServer() {
       };
     }
 
+    const trainMatch = text.match(/\b\d{5}\b/);
     if (trainMatch) {
       return {
         intent: 'LIVE_TRAIN_STATUS',
-        entities: { train_number: trainMatch[0] },
+        entities: { train_number: trainMatch[0], start_day: '1' },
         reply: `Main train ${trainMatch[0]} ka live status check kar raha hoon...`
       };
     }
 
-    if (text.includes('train') && text.includes('se') && text.includes('tak')) {
-        return {
-            intent: 'TRAIN_BETWEEN_STATIONS',
-            entities: {},
-            reply: 'Trains between stations search kar raha hoon...'
-        };
+    if (text.includes('live board') || text.includes('arriving')) {
+       const stationTokens = text.replace('ka live board', '').replace('live board', '').replace('station', '').replace('dikhao', '').replace('dikhavo', '').replace('dikhaye', '').replace('kaha', '').replace('hai', '').replace('dikha', '').trim();
+       if (stationTokens.length > 2) {
+          const stationName = stationTokens.split(' ').filter(Boolean).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+          return {
+             intent: 'STATION_LIVE_BOARD',
+             entities: { station_name: stationName },
+             reply: `Main ${stationName} station ka live board load kar raha hoon...`
+          };
+       }
     }
 
-    // Remove the hardcoded general query matcher to allow AI to handle it
+    if (text.includes('se') && (text.includes('tak') || text.includes('train'))) {
+        const parts = text.split('se');
+        if (parts.length > 1) {
+           const src = parts[0].replace('mujhe', '').replace('train', '').trim();
+           const dest = parts[1].replace('tak', '').replace('train', '').replace('chahiye', '').replace('dikhao', '').replace('dikha', '').trim();
+           const srcName = src.split(' ').filter(Boolean).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+           const destName = dest.split(' ').filter(Boolean).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+           return {
+               intent: 'TRAIN_BETWEEN_STATIONS',
+               entities: { source_station: srcName, destination_station: destName },
+               reply: `${srcName} se ${destName} ke beech trains search kar raha hoon...`
+           };
+        }
+    }
+
+    if (text.includes('code kya hai') || text.includes('code batao')) {
+       const stTokens = text.replace('code kya hai', '').replace('code batao', '').replace('station', '').replace('ka', '').trim();
+       if (stTokens.length > 2) {
+          const stationName = stTokens.split(' ').filter(Boolean).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+          return {
+             intent: 'STATION_CODE_LOOKUP',
+             entities: { station_name: stationName },
+             reply: `Main ${stationName} ka code check kar raha hoon...`
+          };
+       }
+    }
+    
+    if (text.includes('train search') || text.includes('kaha jayegi') || text.includes('konsi train hai')) {
+       return {
+          intent: 'TRAIN_SEARCH',
+          entities: {},
+          reply: 'Main trains dhundh raha hoon...'
+       };
+    }
+    
     return null;
   };
 
@@ -124,11 +162,8 @@ async function startServer() {
       const { query } = req.body;
       if (!query) return res.status(400).json({ error: "Missing query" });
 
-      // 1. Try Local Regex-based Matcher first (Fast & No Quota)
-      const localMatch = localNlpEngine(query);
-      let result = localMatch;
+      let result: any = localNlpEngine(query);
 
-      // 2. Fallback to AI if no local match
       if (!result) {
         const prompt = `You are RailMitra AI, an expert and extremely helpful Indian Railway Assistant and general AI assistant. You can answer ANY question the user asks, especially any Indian Railways queries, general questions, math, science, or casual chat.
 
@@ -145,12 +180,13 @@ When answering Indian Railways questions, provide complete and helpful details, 
 If the user's query is not related to railways, answer it fully and beautifully as a general-purpose expert AI.
 
 Supported intents:
-LIVE_TRAIN_STATUS (if they query live status of a train number)
-PNR_STATUS (if they check a 10-digit PNR)
+LIVE_TRAIN_STATUS (if they query live status of a train number or name, or just enter a 5-digit number)
+PNR_STATUS (if they check a 10-digit PNR, or just enter a 10-digit number)
 TRAIN_SEARCH (if they query for a specific train)
 TRAIN_BETWEEN_STATIONS (if they look for trains between source and destination)
 STATION_CODE_LOOKUP (if they ask for a station code or name)
 STATION_NAME_LOOKUP (if they look up a station name)
+STATION_LIVE_BOARD (if they ask to see a live station board / arriving trains at a station)
 GENERAL_RAILWAY_QUERY (for general railway information, Tatkal rules, refund, helplines, etc.)
 GENERAL_QUERY (for non-railway questions like science, math, coding, general knowledge, greetings)
 UNKNOWN (if completely unclear)
@@ -160,92 +196,75 @@ Query: "${query}"
 Return a raw JSON object (NO markdown formatting, NO code blocks, ONLY valid JSON) with the following structure:
 {
   "intent": "INTENT_NAME",
-  "reply": "Your detailed, complete, and helpful reply in Hindi/Hinglish (or English if the user asked in English) answering the query directly with all relevant Indian Railway facts, policies, numbers, or standard procedures.",
+  "reply": "Your helpful reply in Hindi/Hinglish (or English). For queries that trigger UI navigation (like STATION_LIVE_BOARD, LIVE_TRAIN_STATUS, PNR_STATUS, TRAIN_BETWEEN_STATIONS), keep the reply very short (1-2 sentences) like 'Main <station> ka live board load kar raha hoon...'. For general queries, be detailed.",
   "entities": {
     "train_number": "5-digit number if found",
     "pnr_number": "10-digit PNR if found",
     "source_station": "source station name/code if found",
     "destination_station": "destination station name/code if found",
     "station_code": "station code if found",
+    "station_name": "station name if found",
     "start_day": "Return '1' for today, '2' for yesterday/kal, '3' for day before yesterday/parso, etc. Default to '1' if not specified."
   }
 }
 `;
         let text = "{}";
         try {
-          if (process.env.OPENROUTER_API_KEY) {
-            const orRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-              method: "POST",
-              headers: {
-                "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
-                "Content-Type": "application/json"
-              },
-              body: JSON.stringify({
-                model: "google/gemini-2.5-flash",
-                messages: [{ role: "user", content: prompt }],
-                temperature: 0.2
-              })
-            });
-            if (orRes.ok) {
-              const orData = await orRes.json();
-              text = orData.choices?.[0]?.message?.content || "{}";
-            } else {
-              throw new Error("OpenRouter API failed");
-            }
-          } else {
-            const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-            const modelsToTry = ['gemini-2.5-flash', 'gemini-2.0-flash'];
-            let response;
-            let lastError;
+          const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+          const modelsToTry = ['gemini-1.5-flash', 'gemini-2.0-flash'];
+          let response;
+          let lastError;
 
-            for (const modelName of modelsToTry) {
-              let retries = modelName === 'gemini-2.5-flash' ? 2 : 1;
-              
-              while (retries > 0) {
-                try {
-                  response = await ai.models.generateContent({
-                    model: modelName,
-                    contents: prompt,
-                    config: { temperature: 0.2 }
-                  });
-                  break;
-                } catch (err: any) {
-                  lastError = err;
-                  retries--;
-                  if (retries > 0) {
-                    await new Promise(resolve => setTimeout(resolve, 1500));
-                  }
+          for (const modelName of modelsToTry) {
+            let retries = modelName === 'gemini-1.5-flash' ? 2 : 1;
+            
+            while (retries > 0) {
+              try {
+                response = await ai.models.generateContent({
+                  model: modelName,
+                  contents: prompt,
+                  config: { temperature: 0.2 }
+                });
+                break;
+              } catch (err: any) {
+                lastError = err;
+                retries--;
+                if (retries > 0) {
+                  await new Promise(resolve => setTimeout(resolve, 1500));
                 }
               }
-              if (response) break;
             }
-
-            if (!response) {
-              throw lastError || new Error("All fallback models failed.");
-            }
-            text = response.text || "{}";
+            if (response) break;
           }
+
+          if (!response) {
+            throw lastError || new Error("All fallback models failed.");
+          }
+          text = response.text || "{}";
         } catch (error: any) {
-           throw error;
+           console.error("AI Chat Error:", error);
+           result = { intent: "UNKNOWN", reply: "Main server par abhi adhik load hai ya quota khatam ho gaya hai. Aap 'PNR 1234567890' ya '12810 status' jaise seedhe command de kar try karein.", entities: {} };
         }
 
-      // Clean up markdown block if model ignored instructions
-      if (text.startsWith('\`\`\`json')) {
-        text = text.substring(7);
+      if (text !== "{}") {
+        // Clean up markdown block if model ignored instructions
+        if (text.startsWith('\`\`\`json')) {
+          text = text.substring(7);
+        }
+        if (text.startsWith('\`\`\`')) {
+          text = text.substring(3);
+        }
+        if (text.endsWith('\`\`\`')) {
+          text = text.substring(0, text.length - 3);
+        }
+        
+        try {
+          result = JSON.parse(text.trim());
+        } catch (e) {
+          result = { intent: "UNKNOWN", reply: "Sorry, I could not understand.", entities: {} };
+        }
       }
-      if (text.startsWith('\`\`\`')) {
-        text = text.substring(3);
-      }
-      if (text.endsWith('\`\`\`')) {
-        text = text.substring(0, text.length - 3);
-      }
-      
-      try {
-        result = JSON.parse(text.trim());
-      } catch (e) {
-        result = { intent: "UNKNOWN", reply: "Sorry, I could not understand.", entities: {} };
-      }
-      } // Close the Gemini block
+      } // close if (!result)
 
       if (result.intent === 'LIVE_TRAIN_STATUS' && result.entities?.train_number) {
         try {
@@ -263,6 +282,7 @@ Return a raw JSON object (NO markdown formatting, NO code blocks, ONLY valid JSO
 
       res.json(result);
     } catch (error: any) {
+      console.error("AI Chat Error:", error);
       res.json({ 
         intent: "GENERAL_RAILWAY_QUERY", 
         reply: "Maaf kijiye, abhi system pe jyada load hai. Kripya mujhe seedha PNR number (10 digit) ya Train number (5 digit) likh kar bhej dein taki main aapko seedha status bata saku." 

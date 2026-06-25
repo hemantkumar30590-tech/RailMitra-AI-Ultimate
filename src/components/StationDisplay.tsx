@@ -2,9 +2,9 @@ import { useState, useEffect, useRef } from "react";
 import Speedometer from "./Speedometer";
 import { Search, Info, Train, AlertCircle, X, Navigation, Maximize, Minimize, Clock, Volume2, Square } from "lucide-react";
 
-export default function StationDisplay({ onTrainClick }: { onTrainClick?: (no: string) => void }) {
-  const [stationCode, setStationCode] = useState("");
-  const [stationName, setStationName] = useState("");
+export default function StationDisplay({ onTrainClick, initialStationCode, initialStationName }: { onTrainClick?: (no: string) => void, initialStationCode?: string, initialStationName?: string }) {
+  const [stationCode, setStationCode] = useState(initialStationCode || "");
+  const [stationName, setStationName] = useState(initialStationName || "");
   const [stationSuggestions, setStationSuggestions] = useState<any[]>([]);
   const [showStationSuggest, setShowStationSuggest] = useState(false);
   const [arrivals, setArrivals] = useState<any[]>([]);
@@ -429,6 +429,30 @@ export default function StationDisplay({ onTrainClick }: { onTrainClick?: (no: s
        fetchTrainDetails(train.train_no);
     }
   };
+
+  useEffect(() => {
+    const handleInitial = async () => {
+      let codeToFetch = initialStationCode;
+      
+      if (!codeToFetch && initialStationName) {
+         try {
+            const res = await fetch(`/api/search-stations?q=${initialStationName}`);
+            const data = await res.json();
+            if (data.results && data.results.length > 0) {
+               codeToFetch = data.results[0].code;
+            }
+         } catch(e) {}
+      }
+
+      if (codeToFetch && codeToFetch !== stationCode) {
+        setStationCode(codeToFetch);
+        if (initialStationName) setStationName(initialStationName);
+        fetchStationArrivals(codeToFetch, initialStationName);
+      }
+    };
+    
+    handleInitial();
+  }, [initialStationCode, initialStationName]);
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-y-auto">

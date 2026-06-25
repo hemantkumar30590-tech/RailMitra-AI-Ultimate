@@ -65,6 +65,10 @@ export default function App() {
   const [showStationSuggest, setShowStationSuggest] = useState(false);
   const [showMockBanner, setShowMockBanner] = useState(true);
   const [isAiOpen, setIsAiOpen] = useState(false);
+  const [targetStationCode, setTargetStationCode] = useState<string>('');
+  const [targetStationName, setTargetStationName] = useState<string>('');
+  const [sourceStationName, setSourceStationName] = useState<string>('');
+  const [destStationName, setDestStationName] = useState<string>('');
 
   useEffect(() => {
     setLedStationIdx(-1);
@@ -168,11 +172,24 @@ export default function App() {
       case 'TRAIN_BETWEEN_STATIONS':
       case 'TRAIN_SEARCH':
         setActiveTab('trains_between');
+        setSourceStationName(entities.source_station || "");
+        setDestStationName(entities.destination_station || "");
         break;
       case 'STATION_CODE_LOOKUP':
       case 'STATION_NAME_LOOKUP':
+      case 'STATION_LIVE_BOARD':
       case 'PLATFORM_INFO':
         setActiveTab('station_search');
+        if (entities.station_code) {
+           setTargetStationCode(entities.station_code.toUpperCase());
+        } else {
+           setTargetStationCode("");
+        }
+        if (entities.station_name) {
+           setTargetStationName(entities.station_name);
+        } else {
+           setTargetStationName("");
+        }
         break;
       case 'TRAIN_ROUTE':
         setActiveTab('schedules');
@@ -286,11 +303,11 @@ export default function App() {
 
       <main className="flex-1 p-4 lg:p-6 flex flex-col lg:flex-row gap-8 overflow-y-auto lg:overflow-hidden relative">
         {activeTab === 'station_search' ? (
-          <StationDisplay onTrainClick={handleTrainClick} />
+          <StationDisplay onTrainClick={handleTrainClick} initialStationCode={targetStationCode} initialStationName={targetStationName} />
         ) : activeTab === 'pnr' ? (
           <PnrEnquiry onTrainClick={handleTrainClick} />
         ) : activeTab === 'trains_between' ? (
-          <TrainsBetween onTrainClick={handleTrainClick} />
+          <TrainsBetween onTrainClick={handleTrainClick} initialSource={sourceStationName} initialDest={destStationName} />
         ) : (
           <>
             <section className="w-full lg:w-1/3 flex flex-col gap-8 shrink-0 lg:overflow-y-auto pb-4 px-2">
@@ -436,7 +453,7 @@ export default function App() {
           )}
 
           {activeTab === 'station_search' ? (
-            <StationDisplay />
+            <StationDisplay onTrainClick={handleTrainClick} initialStationCode={targetStationCode} initialStationName={targetStationName} />
           ) : isSuccess ? (
             <div className="space-y-6 flex-1 h-full flex flex-col">
               {trainData.is_mock && showMockBanner && (
