@@ -64,3 +64,33 @@ Intent Examples:
 "Platform number batao" → PLATFORM_INFO
 
 Always think like a railway operations assistant, not a generic chatbot.
+
+## Cursor Cloud specific instructions
+
+RailMitra AI is a single Node.js full-stack app (Express + Vite + React). There is no Docker, database, or separate backend service.
+
+### Commands
+
+| Task | Command |
+|------|---------|
+| Install deps | `npm install` |
+| Dev server | `npm run dev` (port **3000**) |
+| Lint | `npm run lint` (`tsc --noEmit`) |
+| Build | `npm run build` |
+| Production | `npm run start` (requires `npm run build` first) |
+
+### Environment
+
+- Copy `.env.example` to `.env.local` and set `GEMINI_API_KEY` for free-form AI chat (Gemini). Simple commands like `12810`, a 10-digit PNR, or `Delhi se Mumbai train` work without it via the local regex NLP engine in `server.ts`.
+- `dotenv.config()` loads `.env` only; for local dev, either export `GEMINI_API_KEY` in the shell or add it to a `.env` file (not just `.env.local` unless you symlink or duplicate).
+- `RAPIDAPI_KEY` and `OPENROUTER_API_KEY` in `.env.example` are unused by the main app.
+
+### Runtime dependencies
+
+The dev server needs outbound internet for live features: Datameet GitHub datasets (train/station search), Railyatri/eTrain (live status), WhereIsMyTrain (station board). The app boots without network but search and live data will be empty.
+
+### Gotchas
+
+- No formal `npm test` script; root `test*.ts` files are ad-hoc experiments, not CI tests.
+- PNR enquiry is mocked client-side only.
+- Use `npm run dev` for development (not `npm run start`), unless verifying the production bundle.
