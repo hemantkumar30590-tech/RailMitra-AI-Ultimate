@@ -91,13 +91,43 @@ export default function TrainsBetween({ onTrainClick, initialSource, initialDest
     return () => clearTimeout(timer);
   }, [toQuery, showToSuggest]);
 
+  const resolveStationCode = async (query: string, fallbackCode: string) => {
+    if (fallbackCode) return fallbackCode;
+    const q = query.trim();
+    if (!q) return '';
+    // Accept "NAME (CODE)" format
+    const codeMatch = q.match(/\(([A-Z0-9]{2,5})\)\s*$/i);
+    if (codeMatch) return codeMatch[1].toUpperCase();
+    try {
+      const res = await fetch(`/api/search-stations?q=${encodeURIComponent(q)}`);
+      const data = await res.json();
+      const results = data.results || [];
+      if (!results.length) {
+        // Fall back to raw code if it looks like one
+        if (/^[A-Za-z0-9]{2,5}$/.test(q)) return q.toUpperCase();
+        return '';
+      }
+      // Prefer exact code match over substring matches (e.g. HWH vs HWHG)
+      const exact = results.find((s: any) => s.code?.toUpperCase() === q.toUpperCase());
+      if (exact) return exact.code;
+      return results[0].code;
+    } catch (_) {
+      if (/^[A-Za-z0-9]{2,5}$/.test(q)) return q.toUpperCase();
+      return '';
+    }
+  };
+
   const searchTrains = async () => {
-    if (!fromCode || !toCode) return;
+    const resolvedFrom = await resolveStationCode(fromQuery, fromCode);
+    const resolvedTo = await resolveStationCode(toQuery, toCode);
+    if (!resolvedFrom || !resolvedTo) return;
+    setFromCode(resolvedFrom);
+    setToCode(resolvedTo);
     setLoading(true);
     setResults(null);
     
     try {
-        const r = await fetch(`/api/trains-between?from=${fromCode}&to=${toCode}`);
+        const r = await fetch(`/api/trains-between?from=${resolvedFrom}&to=${resolvedTo}`);
         const data = await r.json();
         setResults(data.results || []);
     } catch (e) {
@@ -205,7 +235,7 @@ export default function TrainsBetween({ onTrainClick, initialSource, initialDest
 
            <button 
               onClick={searchTrains}
-              disabled={loading || !fromCode || !toCode}
+              disabled={loading || (!fromCode && fromQuery.trim().length < 2) || (!toCode && toQuery.trim().length < 2)}
               className="w-full lg:w-auto flex-none bg-transparent border border-cyan-400 text-cyan-400 hover:bg-cyan-900 text-white font-extrabold py-4 px-8 rounded-2xl shadow-3d-button hover:bg-blue-700 disabled:opacity-50 transition-all self-end uppercase tracking-wider text-base"
            >
               {loading ? 'Searching...' : 'Find Trains'}
