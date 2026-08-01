@@ -4,7 +4,7 @@
 
 # RailMitra AI
 
-Indian Railway assistant for live train status, trains between stations, station board, and AI chat.
+Indian Railway assistant for live train status, trains between stations, station board, PNR, and AI chat.
 
 View your app in AI Studio: https://ai.studio/apps/f603b3ce-4398-4d3d-a40d-aa5eaaa83513
 
@@ -16,21 +16,37 @@ View your app in AI Studio: https://ai.studio/apps/f603b3ce-4398-4d3d-a40d-aa5ea
    `npm install`
 2. Copy env template and set keys:
    `cp .env.example .env.local`
-3. Set `RAPIDAPI_KEY` in `.env.local` (required for live RapidAPI railway data)
+3. Set `RAPIDAPI_KEY` in `.env.local`
 4. Optionally set `GEMINI_API_KEY` for AI chat
 5. Run the app:
    `npm run dev`
 
-### RapidAPI setup
+### RapidAPI setup (irctc27)
 
-1. Create a RapidAPI account and get your API key
-2. Subscribe to these APIs (same key works for both):
-   - **IRCTC** host: `irctc1.p.rapidapi.com` — live train status
-   - **Rail Info API India** host: `rail-info-api-india1.p.rapidapi.com` — train/station search & trains between
-3. Put the key in `.env.local`:
+Primary host (as configured):
 
 ```bash
 RAPIDAPI_KEY="your_rapidapi_key_here"
+RAPIDAPI_IRCTC_HOST="irctc27.p.rapidapi.com"
 ```
 
-Without `RAPIDAPI_KEY`, the server falls back to public scrapers/cache where available.
+Subscribe on RapidAPI: [GatiMan / irctc27](https://rapidapi.com/GatiMan/api/irctc27)
+
+Used endpoints:
+
+| Feature | Method | Path |
+|--------|--------|------|
+| Live train status | POST | `/train-running-status.php` |
+| Train schedule | POST | `/train-schedule.php` |
+| PNR status | POST | `/pnr-status.php` |
+| Trains between | POST | `/search.php` |
+
+Headers:
+
+```
+x-rapidapi-key: <your key>
+x-rapidapi-host: irctc27.p.rapidapi.com
+Content-Type: application/x-www-form-urlencoded
+```
+
+If irctc27 quota is exceeded, the server falls back to `irctc1` / `rail-info-api-india1` / public scrapers where available.
