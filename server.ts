@@ -4,7 +4,146 @@ import { createServer as createViteServer } from "vite";
 import * as dotenv from "dotenv";
 import { GoogleGenAI } from "@google/genai";
 
+// Prefer .env.local (local secrets), then fall back to .env
+dotenv.config({ path: ".env.local" });
 dotenv.config();
+
+const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY || "";
+const RAPIDAPI_IRCTC_HOST = process.env.RAPIDAPI_IRCTC_HOST || "irctc1.p.rapidapi.com";
+const RAPIDAPI_RAIL_HOST = process.env.RAPIDAPI_RAIL_HOST || "rail-info-api-india1.p.rapidapi.com";
+
+function hasRapidApiKey() {
+  return Boolean(RAPIDAPI_KEY && RAPIDAPI_KEY !== "MY_RAPIDAPI_KEY");
+}
+
+async function rapidFetch(host: string, pathAndQuery: string, init: RequestInit = {}) {
+  if (!hasRapidApiKey()) {
+    throw new Error("RAPIDAPI_KEY is not configured");
+  }
+  const url = pathAndQuery.startsWith("http")
+    ? pathAndQuery
+    : `https://${host}${pathAndQuery.startsWith("/") ? "" : "/"}${pathAndQuery}`;
+  const res = await fetch(url, {
+    ...init,
+    headers: {
+      "x-rapidapi-key": RAPIDAPI_KEY,
+      "x-rapidapi-host": host,
+      ...(init.headers || {}),
+    },
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`RapidAPI ${host} ${res.status}: ${body.slice(0, 200)}`);
+  }
+  return res.json();
+}
+
+/** App uses startDay=1 for today; IRCTC RapidAPI uses startDay=0 for today. */
+function toRapidStartDay(appStartDay: string | number) {
+  const n = parseInt(String(appStartDay || "1"), 10);
+  if (Number.isNaN(n)) return 0;
+  return Math.max(0, n - 1);
+}
+
+function formatHhMm(time?: string | null) {
+  if (!time) return "";
+  // Handles "19:30", "19:30:00", ISO fragments
+  const m = String(time).match(/(\d{1,2}):(\d{2})/);
+  if (!m) return String(time);
+  return `${m[1].padStart(2, "0")}:${m[2]}`;
+}
+
+function durationFromTimes(dep?: string | null, arr?: string | null, dayOffset = 0) {
+  const parse = (t?: string | null) => {
+    const m = String(t || "").match(/(\d{1,2}):(\d{2})/);
+    if (!m) return null;
+    return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+  };
+  const d = parse(dep);
+  const a = parse(arr);
+  if (d == null || a == null) return "—";
+  let mins = a + dayOffset * 24 * 60 - d;
+  if (mins < 0) mins += 24 * 60;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return `${h}h ${m}m`;
+}
+
+function mapTrainType(name = "", type = "") {
+  const u = `${name} ${type}`.toUpperCase();
+  if (u.includes("RAJ")) return "RAJ";
+  if (u.includes("SHATABDI") || u.includes("SHT")) return "SHT";
+  if (u.includes("VANDE") || u.includes("VB")) return "VB";
+  if (u.includes("SF") || u.includes("SUPERFAST")) return "SF";
+  if (u.includes("SPL") || u.includes("SPECIAL")) return "SPL";
+  if (u.includes("MAIL")) return "MAIL";
+  if (u.includes("EXP")) return "EXP";
+  return type ? String(type).slice(0, 4).toUpperCase() : "EXP";
+}
+
+async function fetchLiveStatusFromRapid(trainNo: string, appStartDay: string) {
+  const startDay = toRapidStartDay(appStartDay);
+  const json = await rapidFetch(
+    RAPIDAPI_IRCTC_HOST,
+    `/api/v1/liveTrainStatus?trainNo=${encodeURIComponent(trainNo)}&startDay=${startDay}`
+  );
+  const lts = json?.data;
+  if (!lts || json?.status === false) {
+    throw new Error(json?.message || "RapidAPI live status empty");
+  }
+  return lts;
+}
+
+async function fetchTrainsBetweenFromRapid(from: string, to: string) {
+  const json = await rapidFetch(
+    RAPIDAPI_RAIL_HOST,
+    `/v1/trains/between?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&limit=50`
+  );
+  const rows = json?.data || [];
+  return rows.map((t: any) => {
+    const fromStn = t.from_station || {};
+    const toStn = t.to_station || {};
+    const dept = formatHhMm(fromStn.departure_time);
+    const arr = formatHhMm(toStn.arrival_time);
+    const dayOffset = (toStn.arrival_day_offset ?? 0) - (fromStn.departure_day_offset ?? 0);
+    return {
+      number: String(t.train_no || ""),
+      name: t.train_name || "",
+      dept,
+      arr,
+      duration: durationFromTimes(fromStn.departure_time, toStn.arrival_time, dayOffset),
+      type: mapTrainType(t.train_name, t.train_type),
+      classes: "2A, 3A, SL, 2S",
+      source: (fromStn.display_name_en || fromStn.station_code || from).toUpperCase(),
+      destination: (toStn.display_name_en || toStn.station_code || to).toUpperCase(),
+      boardStn: String(fromStn.station_code || from).toUpperCase(),
+      alightStn: String(toStn.station_code || to).toUpperCase(),
+      runningDays: "Select Days",
+    };
+  });
+}
+
+async function searchTrainsFromRapid(q: string) {
+  const json = await rapidFetch(
+    RAPIDAPI_RAIL_HOST,
+    `/v1/trains/search?q=${encodeURIComponent(q)}&limit=10`
+  );
+  return (json?.data || []).map((t: any) => ({
+    number: String(t.train_no || ""),
+    name: t.train_name || "",
+  }));
+}
+
+async function searchStationsFromRapid(q: string) {
+  const json = await rapidFetch(
+    RAPIDAPI_RAIL_HOST,
+    `/v1/stations/search?q=${encodeURIComponent(q)}&limit=10`
+  );
+  return (json?.data || []).map((s: any) => ({
+    code: String(s.code_current || s.station_code || "").toUpperCase(),
+    name: s.display_name_en || s.name || "",
+  }));
+}
 
 let cachedTrains: any[] = [];
 let cachedStations: any[] = [];
@@ -290,30 +429,62 @@ Return a raw JSON object (NO markdown formatting, NO code blocks, ONLY valid JSO
     }
   });
 
-  app.get("/api/search-trains", (req, res) => {
+  app.get("/api/search-trains", async (req, res) => {
     const q = (req.query.q as string || "").toLowerCase().trim();
     if (!q || q.length < 2) return res.json({ results: [] });
+
+    if (hasRapidApiKey()) {
+      try {
+        const results = await searchTrainsFromRapid(q);
+        if (results.length > 0) return res.json({ results, source: "rapidapi" });
+      } catch (err: any) {
+        console.warn("[search-trains] RapidAPI failed, falling back to cache:", err.message);
+      }
+    }
     
     const results = cachedTrains
       .filter(t => t.number.includes(q) || t.name.toLowerCase().includes(q))
       .slice(0, 10);
-    res.json({ results });
+    res.json({ results, source: "cache" });
   });
 
-  app.get("/api/search-stations", (req, res) => {
+  app.get("/api/search-stations", async (req, res) => {
     const q = (req.query.q as string || "").toLowerCase().trim();
     if (!q || q.length < 2) return res.json({ results: [] });
+
+    if (hasRapidApiKey()) {
+      try {
+        const results = await searchStationsFromRapid(q);
+        if (results.length > 0) return res.json({ results, source: "rapidapi" });
+      } catch (err: any) {
+        console.warn("[search-stations] RapidAPI failed, falling back to cache:", err.message);
+      }
+    }
     
     const results = cachedStations
       .filter(s => s.code.toLowerCase().includes(q) || (s.name && s.name.toLowerCase().includes(q)))
       .slice(0, 10);
-    res.json({ results });
+    res.json({ results, source: "cache" });
   });
 
   app.get("/api/trains-between", async (req, res) => {
       const { from, to } = req.query;
       if (!from || !to) {
           return res.status(400).json({ error: "Missing from or to station codes" });
+      }
+
+      if (hasRapidApiKey()) {
+        try {
+          const results = await fetchTrainsBetweenFromRapid(
+            String(from).toUpperCase(),
+            String(to).toUpperCase()
+          );
+          if (results.length > 0) {
+            return res.json({ results, source: "rapidapi" });
+          }
+        } catch (err: any) {
+          console.warn("[trains-between] RapidAPI failed, falling back to scrape:", err.message);
+        }
       }
 
       try {
@@ -391,14 +562,14 @@ Return a raw JSON object (NO markdown formatting, NO code blocks, ONLY valid JSO
               }
           });
           
-          res.json({ results: trains });
+          res.json({ results: trains, source: "scrape" });
       } catch (error: any) {
           console.error("Failed to scrape trains between:", error);
           res.status(500).json({ error: "Failed to fetch trains" });
       }
   });
 
-  // API proxy route
+  // API proxy route — RapidAPI first, then Railyatri scrape fallback
   app.get("/api/train-status", async (req, res) => {
     const trainNo = typeof req.query.trainNo === 'string' ? req.query.trainNo : String(req.query.trainNo || '');
     const startDay = typeof req.query.startDay === 'string' ? req.query.startDay : String(req.query.startDay || '1');
@@ -408,21 +579,38 @@ Return a raw JSON object (NO markdown formatting, NO code blocks, ONLY valid JSO
     }
 
     try {
-       const cheerio = await import('cheerio');
-       const url = `https://www.railyatri.in/live-train-status/${trainNo}`;
-       const ryReq = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)" } });
-       if (!ryReq.ok) {
-           throw new Error(`Railyatri failed with status ${ryReq.status}`);
+       let lts: any = null;
+       let dataSource = "scrape";
+
+       if (hasRapidApiKey()) {
+         try {
+           lts = await fetchLiveStatusFromRapid(trainNo, startDay);
+           dataSource = "rapidapi";
+           console.log(`[Status] RapidAPI live status OK for ${trainNo}`);
+         } catch (rapidErr: any) {
+           console.warn(`[Status] RapidAPI failed for ${trainNo}:`, rapidErr.message);
+         }
        }
-       const html = await ryReq.text();
-       const $ = cheerio.load(html);
-       
-       const nextData = $('#__NEXT_DATA__').html();
-       if (!nextData) throw new Error("NEXT_DATA not found");
-       
-       const ryData = JSON.parse(nextData);
-       const lts = ryData.props?.pageProps?.ltsData;
-       if (!lts) throw new Error("LTS data not present in NextJS props");
+
+       if (!lts) {
+         const cheerio = await import('cheerio');
+         const url = `https://www.railyatri.in/live-train-status/${trainNo}`;
+         const ryReq = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)" } });
+         if (!ryReq.ok) {
+             throw new Error(`Railyatri failed with status ${ryReq.status}`);
+         }
+         const html = await ryReq.text();
+         const $ = cheerio.load(html);
+         
+         const nextData = $('#__NEXT_DATA__').html();
+         if (!nextData) throw new Error("NEXT_DATA not found");
+         
+         const ryData = JSON.parse(nextData);
+         lts = ryData.props?.pageProps?.ltsData;
+         dataSource = "scrape";
+       }
+
+       if (!lts) throw new Error("LTS data not present");
 
        const mapStation = (s, isPast) => {
            if (!s.station_code && !s.station_name) return null;
@@ -507,7 +695,7 @@ Return a raw JSON object (NO markdown formatting, NO code blocks, ONLY valid JSO
            else if (previous_stations.length > 0) previous_stations[previous_stations.length - 1].isCurrent = true;
        }
 
-       let estimatedSpeedKmHr = lts.speed || 0;
+       let estimatedSpeedKmHr = lts.speed || lts.avg_speed || 0;
        if (previous_stations.length >= 2 && !estimatedSpeedKmHr) {
            const s1 = previous_stations[previous_stations.length - 2];
            const s2 = previous_stations[previous_stations.length - 1];
@@ -521,17 +709,23 @@ Return a raw JSON object (NO markdown formatting, NO code blocks, ONLY valid JSO
            }
        }
 
+       const currentName = String(lts.current_station_name || "")
+         .replace(/~+$/, "")
+         .trim() || (upcoming_stations[0] ? upcoming_stations[0].station_name : "Unknown");
+
        return res.json({
            success: true,
+           data_source: dataSource,
            is_run_day: lts.is_run_day !== false,
            train_name: lts.train_name,
            train_number: lts.train_number || trainNo,
            source: lts.source_stn_name || lts.source || "Source",
            destination: lts.dest_stn_name || lts.destination || "Destination",
-           current_station_name: lts.current_station_name || (upcoming_stations[0] ? upcoming_stations[0].station_name : "Unknown"),
+           current_station_name: currentName,
            train_start_date: (function() {
                let out = lts.train_start_date;
-               if (startDay && startDay !== '1' && out) {
+               // Only adjust start date for scrape fallback (RapidAPI already returns the correct date)
+               if (dataSource !== "rapidapi" && startDay && startDay !== '1' && out) {
                    const offset = parseInt(startDay) - 1;
                    if (!isNaN(offset)) {
                        const d = new Date(out);
@@ -542,7 +736,7 @@ Return a raw JSON object (NO markdown formatting, NO code blocks, ONLY valid JSO
                return out;
            })(),
            delay: lts.delay || 0,
-           new_message: lts.new_message || lts.running_status_message || "Active journey",
+           new_message: lts.new_message || lts.new_alert_msg || lts.running_status_message || (lts.current_location_info?.[0]?.message) || "Active journey",
            update_time: lts.update_time || new Date().toLocaleString(),
            estimated_speed_kmhr: estimatedSpeedKmHr || 60,
            previous_stations,
@@ -756,6 +950,11 @@ Return a raw JSON object (NO markdown formatting, NO code blocks, ONLY valid JSO
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
+    console.log(
+      hasRapidApiKey()
+        ? "[RapidAPI] Key loaded — live status / search / trains-between will use RapidAPI"
+        : "[RapidAPI] RAPIDAPI_KEY missing — set it in .env.local (see .env.example)"
+    );
   });
 }
 
