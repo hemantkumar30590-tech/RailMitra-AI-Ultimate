@@ -2,19 +2,38 @@
 <img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
 </div>
 
-# Run and deploy your AI Studio app
+# RailMitra AI
 
-This contains everything you need to run your app locally.
-
-View your app in AI Studio: https://ai.studio/apps/f603b3ce-4398-4d3d-a40d-aa5eaaa83513
+Indian Railway assistant for live train status, trains between stations, station board, PNR, and AI chat.
 
 ## Run Locally
 
-**Prerequisites:**  Node.js
+1. `npm install`
+2. `cp .env.example .env.local`
+3. Set `RAPIDAPI_KEY` in `.env.local`
+4. `npm run dev`
 
+### RapidAPI setup (irctc-api5)
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+```bash
+RAPIDAPI_KEY="your_rapidapi_key_here"
+RAPIDAPI_IRCTC_HOST="irctc-api5.p.rapidapi.com"
+```
+
+| Feature | Method | Path |
+|--------|--------|------|
+| Live train status | GET | `/live-status/{train_no}?date=YYYY-MM-DD&frm=HWH` |
+| Trains between | GET | `/trains?frm=NDLS&to=BCT` |
+| Search train | GET | `/search/train?q=...` |
+| Search station | GET | `/search/station?q=...` |
+| PNR status | GET | `/pnr/{pnr}` |
+| Station live | GET | `/station-live/{station_code}` |
+
+Headers:
+
+```
+x-rapidapi-key: <your key>
+x-rapidapi-host: irctc-api5.p.rapidapi.com
+```
+
+Fallbacks: `irctc1` (live), `rail-info-api-india1` (search/trains-between), public scrapers.

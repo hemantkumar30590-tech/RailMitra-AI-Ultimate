@@ -8,27 +8,44 @@ export default function PnrEnquiry({ onTrainClick }: { onTrainClick?: (no: strin
   const [foodModalOpen, setFoodModalOpen] = useState(false);
   const [ordered, setOrdered] = useState(false);
 
-  const fetchPnr = () => {
+  const fetchPnr = async () => {
     if (pnr.length !== 10) return;
     setLoading(true);
-    // Simulate fetch
-    setTimeout(() => {
+    setResult(null);
+    try {
+      const res = await fetch(`/api/pnr-status?pnr=${pnr}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "PNR check failed");
       setResult({
-        pnr: pnr,
-        train_no: "12301",
-        train_name: "Howrah Rajdhani Express",
-        from: "HWH",
-        to: "NDLS",
-        date: new Date().toLocaleDateString('en-GB'),
-        class: "3A",
-        chart_status: "Chart Prepared",
-        passengers: [
-          { s_no: 1, booking_status: "CNF / B2 / 34", current_status: "CNF" },
-          { s_no: 2, booking_status: "CNF / B2 / 35", current_status: "CNF" },
-        ]
+        pnr: data.pnr || pnr,
+        train_no: data.train_no || "—",
+        train_name: data.train_name || "Train",
+        from: data.from || "—",
+        to: data.to || "—",
+        date: data.date || new Date().toLocaleDateString("en-GB"),
+        class: data.class || "—",
+        chart_status: data.chart_status || "Unknown",
+        passengers: data.passengers?.length
+          ? data.passengers
+          : [{ s_no: 1, booking_status: "—", current_status: "—" }],
+        source: data.source,
       });
+    } catch (e: any) {
+      setResult({
+        pnr,
+        train_no: "—",
+        train_name: "PNR unavailable",
+        from: "—",
+        to: "—",
+        date: new Date().toLocaleDateString("en-GB"),
+        class: "—",
+        chart_status: e.message || "Lookup failed",
+        passengers: [],
+        error: true,
+      });
+    } finally {
       setLoading(false);
-    }, 1200);
+    }
   };
 
   return (
@@ -119,7 +136,7 @@ export default function PnrEnquiry({ onTrainClick }: { onTrainClick?: (no: strin
             </div>
             <div className="mt-4 bg-orange-50 border border-orange-200 rounded-xl p-4 flex gap-3 text-orange-800 text-sm">
                 <Info size={20} className="shrink-0 text-orange-500"/>
-                <p>This is an AI-simulated representation. Real PNR live status checking requires specialized official API keys.</p>
+                <p>{result.source === "irctc-api5" ? "Live PNR data via RapidAPI (irctc-api5)." : result.error ? "PNR lookup failed — check key/quota or try again." : "PNR status from railway API."}</p>
             </div>
           </div>
 
