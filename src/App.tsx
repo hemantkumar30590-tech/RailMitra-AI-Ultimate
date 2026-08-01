@@ -759,7 +759,7 @@ export default function App() {
               })()}
 
               {activeTab === 'map' && (
-                <div className="flex-1 bg-[#0d1326] rounded-xl border border-teal-900 overflow-hidden relative min-h-[500px] h-full">
+                <div className="flex-1 bg-[#0d1326] rounded-xl border border-teal-900 overflow-hidden relative min-h-[500px]" style={{ height: 500 }}>
                   <RouteMap stations={allStations} />
                 </div>
               )}

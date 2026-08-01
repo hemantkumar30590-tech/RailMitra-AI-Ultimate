@@ -6,3 +6,9 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Local test artifacts
+test-ui.mjs
+test-results.json
+.env
+.env.local

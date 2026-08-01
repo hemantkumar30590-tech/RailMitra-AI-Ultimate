@@ -306,6 +306,15 @@ Return a raw JSON object (NO markdown formatting, NO code blocks, ONLY valid JSO
     
     const results = cachedStations
       .filter(s => s.code.toLowerCase().includes(q) || (s.name && s.name.toLowerCase().includes(q)))
+      .sort((a, b) => {
+        // Exact code match first, then code prefix, then name prefix
+        const aCode = a.code.toLowerCase();
+        const bCode = b.code.toLowerCase();
+        const aExact = aCode === q ? 0 : aCode.startsWith(q) ? 1 : 2;
+        const bExact = bCode === q ? 0 : bCode.startsWith(q) ? 1 : 2;
+        if (aExact !== bExact) return aExact - bExact;
+        return aCode.length - bCode.length;
+      })
       .slice(0, 10);
     res.json({ results });
   });
