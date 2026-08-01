@@ -9,8 +9,8 @@ dotenv.config({ path: ".env.local" });
 dotenv.config();
 
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY || "";
-// Primary: GatiMan IRCTC27 (https://rapidapi.com/GatiMan/api/irctc27)
-const RAPIDAPI_IRCTC_HOST = process.env.RAPIDAPI_IRCTC_HOST || "irctc27.p.rapidapi.com";
+// Primary: irctc-api5 (https://rapidapi.com — host irctc-api5.p.rapidapi.com)
+const RAPIDAPI_IRCTC_HOST = process.env.RAPIDAPI_IRCTC_HOST || "irctc-api5.p.rapidapi.com";
 // Optional fallbacks
 const RAPIDAPI_IRCTC1_HOST = process.env.RAPIDAPI_IRCTC1_HOST || "irctc1.p.rapidapi.com";
 const RAPIDAPI_RAIL_HOST = process.env.RAPIDAPI_RAIL_HOST || "rail-info-api-india1.p.rapidapi.com";
@@ -42,23 +42,23 @@ async function rapidFetch(host: string, pathAndQuery: string, init: RequestInit 
     json = { raw: text };
   }
   if (!res.ok) {
-    const msg = json?.message || text.slice(0, 200);
-    throw new Error(`RapidAPI ${host} ${res.status}: ${msg}`);
+    const msg = json?.message || json?.detail || text.slice(0, 200);
+    throw new Error(`RapidAPI ${host} ${res.status}: ${typeof msg === "string" ? msg : JSON.stringify(msg).slice(0, 200)}`);
   }
   if (json?.message && /exceeded|quota|not subscribed/i.test(String(json.message))) {
     throw new Error(`RapidAPI ${host}: ${json.message}`);
   }
+  if (json?.success === false && json?.error) {
+    throw new Error(`RapidAPI ${host}: ${json.error}`);
+  }
   return json;
 }
 
-/** irctc27 endpoints expect application/x-www-form-urlencoded POST bodies. */
-async function irctc27Post(endpoint: string, fields: Record<string, string>) {
-  const body = new URLSearchParams(fields).toString();
-  return rapidFetch(RAPIDAPI_IRCTC_HOST, endpoint, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body,
-  });
+/** App startDay=1 means today; convert to YYYY-MM-DD (IST). */
+function appStartDayToDate(appStartDay: string | number) {
+  const n = parseInt(String(appStartDay || "1"), 10);
+  const offset = Number.isNaN(n) ? 0 : Math.max(0, n - 1); // 1→today, 2→yesterday
+  return todayIstYyyyMmDd(-offset);
 }
 
 /** App uses startDay=1 for today; irctc1 uses startDay=0 for today. */
@@ -70,37 +70,32 @@ function toRapidStartDay(appStartDay: string | number) {
 
 function formatHhMm(time?: string | null) {
   if (!time) return "";
-  const m = String(time).match(/(\d{1,2}):(\d{2})/);
+  const cleaned = String(time).trim();
+  if (/^(first|start|source|-)$/i.test(cleaned)) return "";
+  // Supports "19.30" and "19:30"
+  const m = cleaned.match(/(\d{1,2})[:.](\d{2})/);
   if (!m) return "";
   return `${m[1].padStart(2, "0")}:${m[2]}`;
 }
 
-function parseDelayMinutes(delay?: string | null) {
-  if (!delay) return 0;
-  const s = String(delay).trim().toLowerCase();
-  if (!s || s.includes("right time") || s === "-" || s === "on time") return 0;
-  let mins = 0;
-  const hr = s.match(/(\d+)\s*(?:hr|h|hour)/);
-  const mn = s.match(/(\d+)\s*(?:min|m(?!\w)|minute)/);
-  if (hr) mins += parseInt(hr[1], 10) * 60;
-  if (mn) mins += parseInt(mn[1], 10);
-  if (!hr && !mn) {
-    const n = parseInt(s.replace(/[^\d]/g, ""), 10);
-    if (!Number.isNaN(n)) mins = n;
-  }
-  return mins;
+function formatDurationDot(duration?: string | null) {
+  // "27.25" → "27h 25m", "17.40" → "17h 40m"
+  if (!duration) return "—";
+  const m = String(duration).match(/(\d+)[.:](\d{2})/);
+  if (!m) return String(duration);
+  return `${m[1]}h ${m[2]}m`;
 }
 
-function parseStationCodeName(raw: string) {
-  // "Howrah Jn - HWH" or "Howrah Jn"
-  const m = String(raw || "").match(/^(.*?)\s*-\s*([A-Z0-9]{2,6})\s*$/i);
-  if (m) return { name: m[1].trim(), code: m[2].toUpperCase() };
-  return { name: String(raw || "").trim(), code: "" };
+function runningDaysFromBits(bits?: string | null) {
+  // "1111111" Mon..Sun
+  if (!bits || bits.length < 7) return "Select Days";
+  const labels = ["M", "T", "W", "T", "F", "S", "S"];
+  return labels.filter((_, i) => bits[i] === "1").join(" ") || "Select Days";
 }
 
 function durationFromTimes(dep?: string | null, arr?: string | null, dayOffset = 0) {
   const parse = (t?: string | null) => {
-    const m = String(t || "").match(/(\d{1,2}):(\d{2})/);
+    const m = String(t || "").match(/(\d{1,2})[:.](\d{2})/);
     if (!m) return null;
     return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
   };
@@ -126,129 +121,118 @@ function mapTrainType(name = "", type = "") {
   return type ? String(type).slice(0, 4).toUpperCase() : "EXP";
 }
 
-function todayIstDdMmYyyy(offsetDays = 0) {
-  const d = new Date();
-  d.setMinutes(d.getMinutes() + d.getTimezoneOffset() + 330);
-  d.setDate(d.getDate() + offsetDays);
-  const dd = String(d.getDate()).padStart(2, "0");
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const yyyy = d.getFullYear();
-  return `${dd}-${mm}-${yyyy}`;
-}
-
 function todayIstYyyyMmDd(offsetDays = 0) {
   const d = new Date();
   d.setMinutes(d.getMinutes() + d.getTimezoneOffset() + 330);
   d.setDate(d.getDate() + offsetDays);
-  return d.toISOString().split("T")[0];
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
 }
 
-/** Convert irctc27 running_status (+ optional schedule) into irctc1-like LTS object. */
-function mapIrctc27LiveToLts(trainNo: string, live: any, schedule?: any) {
-  const schedRows: any[] = schedule?.schedule || [];
-  const liveRows: any[] = live?.running_status || [];
-
-  const schedByName = new Map<string, any>();
-  for (const row of schedRows) {
-    const { name, code } = parseStationCodeName(row.station);
-    schedByName.set(name.toLowerCase(), { ...row, name, code });
+function resolveTrainSourceCode(trainNo: string, fallback = "") {
+  const cached = cachedTrains.find((t) => t.number === trainNo);
+  if (cached?.from_station_code) return String(cached.from_station_code).toUpperCase();
+  // Some datasets use from_station_name as code-like short names
+  if (cached?.from_station_name && /^[A-Z0-9]{2,6}$/i.test(cached.from_station_name)) {
+    return String(cached.from_station_name).toUpperCase();
   }
+  return fallback.toUpperCase();
+}
 
-  const stations = (liveRows.length ? liveRows : schedRows).map((row: any, idx: number) => {
-    const rawName = row.station || "";
-    const parsed = parseStationCodeName(rawName);
-    const sched = schedByName.get(parsed.name.toLowerCase()) || schedRows[idx];
-    const schedParsed = sched ? parseStationCodeName(sched.station || "") : parsed;
-    const code = parsed.code || schedParsed.code || "";
-    const name = parsed.name || schedParsed.name || `Station ${idx + 1}`;
+/** Map irctc-api5 live-status JSON → irctc1-like LTS object used by /api/train-status. */
+function mapApi5LiveToLts(trainNo: string, live: any) {
+  const rows: any[] = live?.stations || [];
+  let currentIdx = -1;
+  let currentLabel = "";
 
-    let sta = formatHhMm(sched?.arrives) || formatHhMm(row.arrives) || formatHhMm(row.departs) || "";
-    let std = formatHhMm(sched?.departs) || formatHhMm(row.departs) || sta;
-    if (!sta && std) sta = std;
-    if (String(sched?.arrives || "").toLowerCase() === "start") sta = std;
-    if (String(sched?.departs || "").toLowerCase().includes("end") || String(sched?.departs || "") === "-") {
-      std = sta;
+  const stations = rows.map((row: any, idx: number) => {
+    let raw = String(row.station || "").trim();
+    let isCurrent = false;
+    let code = "";
+    let name = raw;
+
+    // e.g. "Departed from DAGORI(DGS) at 09:27 01-Aug BHATAPARA 23km"
+    const departed = raw.match(/Departed from\s+([^(]+)\(([^)]+)\)/i);
+    const arrived = raw.match(/Arrived at\s+([^(]+)\(([^)]+)\)/i);
+    if (departed || arrived) {
+      isCurrent = true;
+      currentIdx = idx;
+      const m = departed || arrived;
+      name = (m![1] || "").trim();
+      code = (m![2] || "").trim().toUpperCase();
+      currentLabel = raw;
+    } else {
+      // "HOWRAH JN Platform  - 21" or "C SHIVAJI MAH T (Cancelled)"
+      name = raw.replace(/\s*Platform\s*-?\s*\d+/i, "").replace(/\s*\(Cancelled\)/i, "").trim();
+      const codeMatch = raw.match(/\(([A-Z0-9]{2,6})\)/);
+      if (codeMatch) code = codeMatch[1].toUpperCase();
     }
 
-    const delay = parseDelayMinutes(row.delay || row.avg_delay || sched?.avg_delay);
-    const distRaw = String(sched?.distance || row.distance || "0");
-    const distance = parseFloat(distRaw.replace(/[^\d.]/g, "")) || 0;
+    const arr = formatHhMm(row.arrival) || formatHhMm(row.departure) || "";
+    const dep = formatHhMm(row.departure) || arr;
+    const pfMatch = raw.match(/Platform\s*-?\s*(\w+)/i);
 
     return {
       station_code: code,
-      station_name: name,
-      sta,
-      std,
-      arrival_delay: delay,
-      departure_delay: delay,
-      distance_from_source: distance,
-      platform_number: row.platform || sched?.platform || "TBD",
+      station_name: name || `Station ${idx + 1}`,
+      sta: arr || dep,
+      std: dep || arr,
+      arrival_delay: 0,
+      departure_delay: 0,
+      distance_from_source: 0,
+      platform_number: pfMatch?.[1] || live?.platform || "TBD",
+      _isCurrent: isCurrent,
     };
   });
 
-  // Estimate current station from IST clock vs schedule times
-  const now = new Date();
-  now.setMinutes(now.getMinutes() + now.getTimezoneOffset() + 330);
-  const nowMins = now.getHours() * 60 + now.getMinutes();
-  const toMins = (t: string) => {
-    const m = t.match(/(\d{2}):(\d{2})/);
-    return m ? parseInt(m[1], 10) * 60 + parseInt(m[2], 10) : null;
-  };
-
-  let currentIdx = 0;
-  for (let i = 0; i < stations.length; i++) {
-    const t = toMins(stations[i].std || stations[i].sta);
-    if (t != null && t <= nowMins + (stations[i].arrival_delay || 0)) currentIdx = i;
+  if (currentIdx < 0) {
+    const idx = stations.findIndex((s) => s._isCurrent);
+    currentIdx = idx >= 0 ? idx : 0;
   }
 
   const previous_stations = stations.slice(0, currentIdx + 1);
   const upcoming_stations = stations.slice(currentIdx);
   const current = stations[currentIdx] || stations[0];
-  const delay = current?.arrival_delay || 0;
+  const cached = cachedTrains.find((t) => t.number === trainNo);
 
   return {
-    train_number: String(live?.train_no || schedule?.train_no || trainNo),
-    train_name: cachedTrains.find((t) => t.number === trainNo)?.name || `Train ${trainNo}`,
-    is_run_day: true,
-    source: stations[0]?.station_code || stations[0]?.station_name || "Source",
-    source_stn_name: stations[0]?.station_name || "Source",
-    destination: stations[stations.length - 1]?.station_code || "Destination",
-    dest_stn_name: stations[stations.length - 1]?.station_name || "Destination",
-    current_station_name: current ? `${current.station_name}${current.station_code ? "" : ""}` : "Unknown",
+    train_number: String(live?.train_no || trainNo),
+    train_name: cached?.name || `Train ${trainNo}`,
+    is_run_day: String(live?.status || "").toLowerCase() !== "not running",
+    source: live?.from || stations[0]?.station_code || "Source",
+    source_stn_name: stations[0]?.station_name || cached?.from_station_name || "Source",
+    destination: stations[stations.length - 1]?.station_code || cached?.to_station_name || "Destination",
+    dest_stn_name: stations[stations.length - 1]?.station_name || cached?.to_station_name || "Destination",
+    current_station_name: current?.station_name || "Unknown",
     current_station_code: current?.station_code || "",
-    delay,
-    new_message:
-      delay > 0
-        ? `Running late by ${delay} min near ${current?.station_name || "route"}`
-        : `On time near ${current?.station_name || "route"}`,
-    train_start_date: todayIstYyyyMmDd(0),
-    update_time: now.toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
+    delay: 0,
+    new_message: currentLabel || live?.status || live?.last_update || "Active journey",
+    train_start_date: live?.date || todayIstYyyyMmDd(0),
+    update_time: live?.last_update || new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
     avg_speed: 60,
+    platform_number: live?.platform,
     previous_stations,
     upcoming_stations,
+    coaches: live?.coaches || [],
   };
 }
 
-async function fetchLiveStatusFromIrctc27(trainNo: string) {
-  let live: any = null;
-  let schedule: any = null;
-  try {
-    live = await irctc27Post("/train-running-status.php", { train_no: trainNo });
-  } catch (e: any) {
-    console.warn("[irctc27] live status failed:", e.message);
+async function fetchLiveStatusFromApi5(trainNo: string, appStartDay: string, frm?: string) {
+  const date = appStartDayToDate(appStartDay);
+  const fromCode = (frm || resolveTrainSourceCode(trainNo, "NDLS")).toUpperCase();
+  const json = await rapidFetch(
+    RAPIDAPI_IRCTC_HOST,
+    `/live-status/${encodeURIComponent(trainNo)}?date=${encodeURIComponent(date)}&frm=${encodeURIComponent(fromCode)}`
+  );
+  if (!json?.success) {
+    throw new Error(json?.error || "irctc-api5 live status failed");
   }
-  try {
-    schedule = await irctc27Post("/train-schedule.php", { train_no: trainNo });
-  } catch (e: any) {
-    console.warn("[irctc27] schedule failed:", e.message);
+  if (!Array.isArray(json.stations) || json.stations.length === 0) {
+    throw new Error(`irctc-api5 returned empty stations for ${trainNo} on ${date} from ${fromCode}`);
   }
-  if (!live && !schedule) {
-    throw new Error("irctc27 live/schedule unavailable");
-  }
-  if (live && !Array.isArray(live.running_status) && live.message) {
-    throw new Error(live.message);
-  }
-  return mapIrctc27LiveToLts(trainNo, live || {}, schedule || undefined);
+  return mapApi5LiveToLts(trainNo, json);
 }
 
 async function fetchLiveStatusFromIrctc1(trainNo: string, appStartDay: string) {
@@ -264,74 +248,48 @@ async function fetchLiveStatusFromIrctc1(trainNo: string, appStartDay: string) {
   return lts;
 }
 
-async function fetchLiveStatusFromRapid(trainNo: string, appStartDay: string) {
-  // Primary: irctc27 (user-provided host)
-  if (RAPIDAPI_IRCTC_HOST.includes("irctc27")) {
-    try {
-      const lts = await fetchLiveStatusFromIrctc27(trainNo);
-      (lts as any)._data_source = "irctc27";
-      return lts;
-    } catch (e: any) {
-      console.warn("[Status] irctc27 failed, trying irctc1 fallback:", e.message);
-    }
-  } else if (RAPIDAPI_IRCTC_HOST.includes("irctc1")) {
-    const lts = await fetchLiveStatusFromIrctc1(trainNo, appStartDay);
-    (lts as any)._data_source = "irctc1";
+async function fetchLiveStatusFromRapid(trainNo: string, appStartDay: string, frm?: string) {
+  // Primary: irctc-api5
+  try {
+    const lts = await fetchLiveStatusFromApi5(trainNo, appStartDay, frm);
+    (lts as any)._data_source = "irctc-api5";
     return lts;
-  } else {
-    try {
-      const lts = await fetchLiveStatusFromIrctc27(trainNo);
-      (lts as any)._data_source = "irctc27";
-      return lts;
-    } catch {
-      /* fall through */
-    }
+  } catch (e: any) {
+    console.warn("[Status] irctc-api5 failed, trying irctc1 fallback:", e.message);
   }
   const lts = await fetchLiveStatusFromIrctc1(trainNo, appStartDay);
   (lts as any)._data_source = "irctc1";
   return lts;
 }
 
-async function fetchTrainsBetweenFromIrctc27(from: string, to: string, dateDdMmYyyy?: string) {
-  const date = dateDdMmYyyy || todayIstDdMmYyyy(0);
-  const json = await irctc27Post("/search.php", {
-    source: from.toUpperCase(),
-    destination: to.toUpperCase(),
-    date,
-  });
-  const trainList =
-    json?.trains?.data?.trainList ||
-    json?.trains?.trainList ||
-    json?.trainList ||
-    json?.data ||
-    [];
-  if (!Array.isArray(trainList) || trainList.length === 0) {
-    if (json?.message) throw new Error(json.message);
+async function fetchTrainsBetweenFromApi5(from: string, to: string) {
+  const json = await rapidFetch(
+    RAPIDAPI_IRCTC_HOST,
+    `/trains?frm=${encodeURIComponent(from.toUpperCase())}&to=${encodeURIComponent(to.toUpperCase())}`
+  );
+  const rows = json?.trains || [];
+  if (!Array.isArray(rows) || rows.length === 0) {
+    if (json?.success === false) throw new Error(json?.error || "no trains");
     return [];
   }
-  return trainList.map((t: any) => {
-    const number = String(t.trainNumber || t.trainNo || t.train_number || "");
-    const name = t.trainName || t.train_name || "";
-    const dept = formatHhMm(t.departureTime || t.departure || t.fromTime);
-    const arr = formatHhMm(t.arrivalTime || t.arrival || t.toTime);
-    const classes = Array.isArray(t.avlClasses)
-      ? t.avlClasses.join(", ")
-      : t.avlClasses || "2A, 3A, SL, 2S";
-    const boardStn = String(t.fromStnCode || t.from || from).toUpperCase();
-    const alightStn = String(t.toStnCode || t.to || to).toUpperCase();
+  return rows.map((t: any) => {
+    const number = String(t.train_no || "");
+    const name = t.train_name || "";
+    const dept = formatHhMm(t.departure);
+    const arr = formatHhMm(t.arrival);
     return {
       number,
       name,
       dept,
       arr,
-      duration: t.duration || durationFromTimes(dept, arr, t.durationDays || 0),
-      type: mapTrainType(name, t.trainType || ""),
-      classes,
-      source: boardStn,
-      destination: alightStn,
-      boardStn,
-      alightStn,
-      runningDays: "Select Days",
+      duration: formatDurationDot(t.duration) || durationFromTimes(t.departure, t.arrival),
+      type: mapTrainType(name, ""),
+      classes: "2A, 3A, SL, 2S",
+      source: (t.source_name || t.source_code || from).toUpperCase(),
+      destination: (t.destination_name || t.destination_code || to).toUpperCase(),
+      boardStn: String(from).toUpperCase(),
+      alightStn: String(to).toUpperCase(),
+      runningDays: runningDaysFromBits(t.running_days),
     };
   });
 }
@@ -365,18 +323,46 @@ async function fetchTrainsBetweenFromRailInfo(from: string, to: string) {
   });
 }
 
-async function fetchTrainsBetweenFromRapid(from: string, to: string, dateDdMmYyyy?: string) {
+async function fetchTrainsBetweenFromRapid(from: string, to: string, _dateDdMmYyyy?: string) {
   try {
-    const results = await fetchTrainsBetweenFromIrctc27(from, to, dateDdMmYyyy);
-    if (results.length > 0) return { results, source: "irctc27" };
+    const results = await fetchTrainsBetweenFromApi5(from, to);
+    if (results.length > 0) return { results, source: "irctc-api5" };
   } catch (e: any) {
-    console.warn("[trains-between] irctc27 failed:", e.message);
+    console.warn("[trains-between] irctc-api5 failed:", e.message);
   }
   const results = await fetchTrainsBetweenFromRailInfo(from, to);
   return { results, source: "rail-info" };
 }
 
+async function searchTrainsFromApi5(q: string) {
+  const json = await rapidFetch(
+    RAPIDAPI_IRCTC_HOST,
+    `/search/train?q=${encodeURIComponent(q)}`
+  );
+  return (json?.trains || []).map((t: any) => ({
+    number: String(t.train_no || t.number || ""),
+    name: t.train_name || t.name || "",
+  })).filter((t: any) => t.number);
+}
+
+async function searchStationsFromApi5(q: string) {
+  const json = await rapidFetch(
+    RAPIDAPI_IRCTC_HOST,
+    `/search/station?q=${encodeURIComponent(q)}`
+  );
+  return (json?.stations || []).map((s: any) => ({
+    code: String(s.code || "").toUpperCase(),
+    name: s.name || "",
+  })).filter((s: any) => s.code);
+}
+
 async function searchTrainsFromRapid(q: string) {
+  try {
+    const results = await searchTrainsFromApi5(q);
+    if (results.length > 0) return results;
+  } catch (e: any) {
+    console.warn("[search-trains] irctc-api5 failed:", e.message);
+  }
   const json = await rapidFetch(
     RAPIDAPI_RAIL_HOST,
     `/v1/trains/search?q=${encodeURIComponent(q)}&limit=10`
@@ -388,22 +374,29 @@ async function searchTrainsFromRapid(q: string) {
 }
 
 async function searchStationsFromRapid(q: string) {
-  const json = await rapidFetch(
-    RAPIDAPI_RAIL_HOST,
-    `/v1/stations/search?q=${encodeURIComponent(q)}&limit=10`
-  );
-  return (json?.data || []).map((s: any) => ({
-    code: String(s.code_current || s.station_code || "").toUpperCase(),
-    name: s.display_name_en || s.name || "",
-  }));
+  // Prefer rail-info for station accuracy; api5 station names look noisy
+  try {
+    const json = await rapidFetch(
+      RAPIDAPI_RAIL_HOST,
+      `/v1/stations/search?q=${encodeURIComponent(q)}&limit=10`
+    );
+    const results = (json?.data || []).map((s: any) => ({
+      code: String(s.code_current || s.station_code || "").toUpperCase(),
+      name: s.display_name_en || s.name || "",
+    }));
+    if (results.length > 0) return results;
+  } catch (e: any) {
+    console.warn("[search-stations] rail-info failed:", e.message);
+  }
+  return searchStationsFromApi5(q);
 }
 
-async function fetchPnrFromIrctc27(pnr: string) {
-  const json = await irctc27Post("/pnr-status.php", { pnr });
-  if (json?.message && !json?.train_no && !json?.TrainNo && !json?.data) {
-    throw new Error(json.message);
-  }
+async function fetchPnrFromApi5(pnr: string) {
+  const json = await rapidFetch(RAPIDAPI_IRCTC_HOST, `/pnr/${encodeURIComponent(pnr)}`);
   const data = json?.data || json;
+  if (json?.success === false) {
+    throw new Error(json?.error || "PNR lookup failed");
+  }
   const passengersRaw = data?.passengerList || data?.passengers || data?.PassengerStatus || [];
   const passengers = (Array.isArray(passengersRaw) ? passengersRaw : []).map((p: any, i: number) => ({
     s_no: p.s_no || p.serialNo || i + 1,
@@ -418,11 +411,19 @@ async function fetchPnrFromIrctc27(pnr: string) {
     to: data.to || data.To || data.destination || data.reservationUpto || "",
     date: data.date || data.DateOfJourney || data.journeyDate || "",
     class: data.class || data.Class || data.journeyClass || "",
-    chart_status: data.chart_status || data.ChartStatus || data.chartingStatus || "Unknown",
+    chart_status: data.chart_status || data.ChartStatus || data.chartingStatus || data.status || "Unknown",
     passengers,
-    source: "irctc27",
+    source: "irctc-api5",
     raw: data,
   };
+}
+
+async function fetchStationLiveFromApi5(stationCode: string) {
+  const json = await rapidFetch(
+    RAPIDAPI_IRCTC_HOST,
+    `/station-live/${encodeURIComponent(stationCode.toUpperCase())}`
+  );
+  return json;
 }
 
 let cachedTrains: any[] = [];
@@ -861,7 +862,7 @@ Return a raw JSON object (NO markdown formatting, NO code blocks, ONLY valid JSO
       }
   });
 
-  // PNR status via irctc27
+  // PNR status via irctc-api5
   app.get("/api/pnr-status", async (req, res) => {
     const pnr = String(req.query.pnr || "").replace(/\D/g, "");
     if (pnr.length !== 10) {
@@ -871,10 +872,10 @@ Return a raw JSON object (NO markdown formatting, NO code blocks, ONLY valid JSO
       return res.status(503).json({ error: "RAPIDAPI_KEY not configured" });
     }
     try {
-      const result = await fetchPnrFromIrctc27(pnr);
+      const result = await fetchPnrFromApi5(pnr);
       return res.json(result);
     } catch (err: any) {
-      console.error("[PNR] irctc27 failed:", err.message);
+      console.error("[PNR] irctc-api5 failed:", err.message);
       return res.status(502).json({ error: err.message || "PNR lookup failed" });
     }
   });
@@ -883,6 +884,7 @@ Return a raw JSON object (NO markdown formatting, NO code blocks, ONLY valid JSO
   app.get("/api/train-status", async (req, res) => {
     const trainNo = typeof req.query.trainNo === 'string' ? req.query.trainNo : String(req.query.trainNo || '');
     const startDay = typeof req.query.startDay === 'string' ? req.query.startDay : String(req.query.startDay || '1');
+    const frm = typeof req.query.frm === 'string' ? req.query.frm : (typeof req.query.from === 'string' ? req.query.from : '');
 
     if (!trainNo || trainNo === 'undefined' || trainNo === '[object Object]') {
       return res.status(400).json({ error: "Missing or invalid trainNo" });
@@ -894,7 +896,7 @@ Return a raw JSON object (NO markdown formatting, NO code blocks, ONLY valid JSO
 
        if (hasRapidApiKey()) {
          try {
-           lts = await fetchLiveStatusFromRapid(trainNo, startDay);
+           lts = await fetchLiveStatusFromRapid(trainNo, startDay, frm || undefined);
            dataSource = (lts as any)?._data_source || "rapidapi";
            console.log(`[Status] RapidAPI (${dataSource}) live status OK for ${trainNo}`);
          } catch (rapidErr: any) {
@@ -1262,7 +1264,7 @@ Return a raw JSON object (NO markdown formatting, NO code blocks, ONLY valid JSO
     console.log(`Server running on http://localhost:${PORT}`);
     console.log(
       hasRapidApiKey()
-        ? `[RapidAPI] Key loaded — host ${RAPIDAPI_IRCTC_HOST} (live/PNR/search via irctc27 + fallbacks)`
+        ? `[RapidAPI] Key loaded — host ${RAPIDAPI_IRCTC_HOST} (live/PNR/trains via irctc-api5 + fallbacks)`
         : "[RapidAPI] RAPIDAPI_KEY missing — set it in .env.local (see .env.example)"
     );
   });

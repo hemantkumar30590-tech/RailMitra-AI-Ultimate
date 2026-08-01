@@ -136,7 +136,7 @@ export default function PnrEnquiry({ onTrainClick }: { onTrainClick?: (no: strin
             </div>
             <div className="mt-4 bg-orange-50 border border-orange-200 rounded-xl p-4 flex gap-3 text-orange-800 text-sm">
                 <Info size={20} className="shrink-0 text-orange-500"/>
-                <p>{result.source === "irctc27" ? "Live PNR data via RapidAPI (irctc27)." : result.error ? "PNR lookup failed — check key/quota or try again." : "PNR status from railway API."}</p>
+                <p>{result.source === "irctc-api5" ? "Live PNR data via RapidAPI (irctc-api5)." : result.error ? "PNR lookup failed — check key/quota or try again." : "PNR status from railway API."}</p>
             </div>
           </div>
 

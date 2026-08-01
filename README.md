@@ -6,47 +6,34 @@
 
 Indian Railway assistant for live train status, trains between stations, station board, PNR, and AI chat.
 
-View your app in AI Studio: https://ai.studio/apps/f603b3ce-4398-4d3d-a40d-aa5eaaa83513
-
 ## Run Locally
 
-**Prerequisites:** Node.js
-
-1. Install dependencies:
-   `npm install`
-2. Copy env template and set keys:
-   `cp .env.example .env.local`
+1. `npm install`
+2. `cp .env.example .env.local`
 3. Set `RAPIDAPI_KEY` in `.env.local`
-4. Optionally set `GEMINI_API_KEY` for AI chat
-5. Run the app:
-   `npm run dev`
+4. `npm run dev`
 
-### RapidAPI setup (irctc27)
-
-Primary host (as configured):
+### RapidAPI setup (irctc-api5)
 
 ```bash
 RAPIDAPI_KEY="your_rapidapi_key_here"
-RAPIDAPI_IRCTC_HOST="irctc27.p.rapidapi.com"
+RAPIDAPI_IRCTC_HOST="irctc-api5.p.rapidapi.com"
 ```
-
-Subscribe on RapidAPI: [GatiMan / irctc27](https://rapidapi.com/GatiMan/api/irctc27)
-
-Used endpoints:
 
 | Feature | Method | Path |
 |--------|--------|------|
-| Live train status | POST | `/train-running-status.php` |
-| Train schedule | POST | `/train-schedule.php` |
-| PNR status | POST | `/pnr-status.php` |
-| Trains between | POST | `/search.php` |
+| Live train status | GET | `/live-status/{train_no}?date=YYYY-MM-DD&frm=HWH` |
+| Trains between | GET | `/trains?frm=NDLS&to=BCT` |
+| Search train | GET | `/search/train?q=...` |
+| Search station | GET | `/search/station?q=...` |
+| PNR status | GET | `/pnr/{pnr}` |
+| Station live | GET | `/station-live/{station_code}` |
 
 Headers:
 
 ```
 x-rapidapi-key: <your key>
-x-rapidapi-host: irctc27.p.rapidapi.com
-Content-Type: application/x-www-form-urlencoded
+x-rapidapi-host: irctc-api5.p.rapidapi.com
 ```
 
-If irctc27 quota is exceeded, the server falls back to `irctc1` / `rail-info-api-india1` / public scrapers where available.
+Fallbacks: `irctc1` (live), `rail-info-api-india1` (search/trains-between), public scrapers.
